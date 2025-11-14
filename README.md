@@ -24,8 +24,8 @@ pip install -r requirements.txt
 
 4. **Download datasets:**
 ```bash
-wget -c https://cornell.box.com/shared/static/987z1jm86dzqhdddkxzxpkhsjngcv4cc.json -O data/documents.json
-wget -c https://cornell.box.com/shared/static/lcjm8ipmds5p9cpwnil1krrjzgwac2td.json -O data/queries.json
-```
+wget -c https://cornell.box.com/shared/static/ffwnimisulvjyzp1t9u3201uj3p0w3bk.json -O documents.json
+wget -c https://cornell.box.com/shared/static/eg115icq6oz2shnq63vzjw3776v30mwy.json -O queries.json
 
-## Usage
+Move both files into data/raw
+```

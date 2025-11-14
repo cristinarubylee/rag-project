@@ -139,9 +139,9 @@ def main():
     print(f"  Distance:            {top_distance:.6f}")
     
     if top_result_id == test_doc_id and top_distance < 0.001:
-        print("  Status: ✓ PASSED - Self-search works correctly!")
+        print("  Status: PASSED - Self-search works correctly!")
     else:
-        print("  Status: ✗ FAILED - Something is wrong with the index!")
+        print("  Status: FAILED - Something is wrong with the index!")
     
     # Show retrieved document texts
     print("\n" + "=" * 60)
