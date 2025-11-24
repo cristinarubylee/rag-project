@@ -4,6 +4,9 @@ import numpy as np
 
 class QueryEncoder:
     def __init__(self, device=None):
+        """
+        Encoder to encode text queries into embedding vectors
+        """
         self.model = SentenceTransformer("BAAI/bge-base-en-v1.5")
 
         if device is None:
