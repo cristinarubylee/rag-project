@@ -38,6 +38,7 @@ data/
 
 # Model checkpoints
 models/*.gguf
+*.gguf
 
 # Results
 results/**/*.png

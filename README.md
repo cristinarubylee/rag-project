@@ -30,4 +30,9 @@ wget -c https://cornell.box.com/shared/static/eg115icq6oz2shnq63vzjw3776v30mwy.j
 Move both files into data/raw
 ```
 
+5. **Process the documents for use in similarity search**
+```bash
+python src\data_preprocess.py
+```
+
 ## Usage

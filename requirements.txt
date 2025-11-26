@@ -1,3 +1,4 @@
 faiss-cpu
 sentence_transformers
 tqdm
+llama-cpp-python
