@@ -25,7 +25,7 @@ def spinner():
         i += 1
 
 
-def process_query(user_input, encoder, vector_db, llm, top_k, similarity_threshold, debug=False):
+def process_query(user_input, encoder, vector_db, llm, top_k, debug=False):
     """
     Process a user query through the RAG pipeline.
     
@@ -35,76 +35,99 @@ def process_query(user_input, encoder, vector_db, llm, top_k, similarity_thresho
         vector_db: VectorDB instance
         llm: LLMGenerator instance
         top_k: Number of documents to retrieve
-        debug: Whether to print detailed pipeline steps
+        debug: Whether to print detailed pipeline steps and performance metrics
     
     Returns:
         Generated answer string
     """
-    if debug:
-        print("\n" + "=" * 60)
-        print(f"Query: {user_input}")
-        print("=" * 60)
+    # Performance tracking
+    perf_metrics = {}
     
     # Step 1: Encode the query into a vector
     if debug:
         print("\n[Step 1] Encoding query...")
+    
+    t_start = time.perf_counter()
     query_embedding = encoder.encode(user_input)
+    perf_metrics['encode_time'] = time.perf_counter() - t_start
+    
+    if debug:
+        print(f"  ⏱️  Encoding time: {perf_metrics['encode_time']*1000:.2f} ms")
     
     # Step 2: Search for top-k most similar documents
     if debug:
         print(f"\n[Step 2] Searching for top {top_k} relevant documents...")
+    
+    t_start = time.perf_counter()
     distances, indices = vector_db.search(query_embedding, k=top_k)
+    perf_metrics['search_time'] = time.perf_counter() - t_start
     
     if debug:
         print(f"  Found documents: {indices[0].tolist()}")
         print(f"  Distances: {[f'{d:.2f}' for d in distances[0]]}")
+        print(f"  ⏱️  Search time: {perf_metrics['search_time']*1000:.2f} ms")
     
-    # Step 3: Filter documents by similarity threshold
-    filtered_indices = []
-    filtered_distances = []
-
+    # Step 3: Retrieve the actual document texts
     if debug:
-        print("\n[Step 3] Filtering documents...")
-    for idx, dist in zip(indices[0], distances[0]):
-        if dist <= similarity_threshold:
-            filtered_indices.append(idx)
-            filtered_distances.append(dist)
-
-    if debug:
-        print(f"After filtering (threshold={similarity_threshold}): {len(filtered_indices)} documents kept")
-        if len(filtered_indices) < len(indices[0]):
-            dropped = len(indices[0]) - len(filtered_indices)
-            print(f"Dropped {dropped} document(s) as too dissimilar")
-            
-    # Step 4: Retrieve the actual document texts
-    if debug:
-        print("\n[Step 4] Retrieving document texts...")
-    retrieved_docs = vector_db.get_documents_by_ids(filtered_indices)
+        print("\n[Step 3] Retrieving document texts...")
+    
+    t_start = time.perf_counter()
+    retrieved_docs = vector_db.get_documents_by_ids(indices[0])
+    perf_metrics['retrieval_time'] = time.perf_counter() - t_start
     
     if debug:
         for i, doc in enumerate(retrieved_docs, 1):
             preview = doc['text'][:150] + "..." if len(doc['text']) > 150 else doc['text']
             print(f"  [{i}] ID {doc['id']}: {preview}")
+        print(f"  ⏱️  Retrieval time: {perf_metrics['retrieval_time']*1000:.2f} ms")
     
-    # Step 5: Create augmented prompt with retrieved context
+    # Step 4: Create augmented prompt with retrieved context
     if debug:
-        print("\n[Step 5] Creating augmented prompt...")
+        print("\n[Step 4] Creating augmented prompt...")
+    
+    t_start = time.perf_counter()
     prompt = llm.create_chat_prompt(user_input, retrieved_docs)
+    perf_metrics['prompt_time'] = time.perf_counter() - t_start
     
-    # Step 6: Generate response using LLM with spinner animation
     if debug:
-        print("\n[Step 6] Generating response with LLM...")
+        print(f"  ⏱️  Prompt creation time: {perf_metrics['prompt_time']*1000:.2f} ms")
+    
+    # Step 5: Generate response using LLM with spinner animation
+    if debug:
+        print("\n[Step 5] Generating response with LLM...")
     
     global spinner_running
     spinner_running = True
     spin_thread = threading.Thread(target=spinner, daemon=True)
     spin_thread.start()
     
+    t_start = time.perf_counter()
     answer = llm.generate(prompt, max_tokens=200, temperature=0.3)
+    perf_metrics['generation_time'] = time.perf_counter() - t_start
     
     spinner_running = False
     spin_thread.join()
     print("\r", end="", flush=True)  # Clear spinner line
+    
+    if debug:
+        print(f"  ⏱️  Generation time: {perf_metrics['generation_time']*1000:.2f} ms")
+    
+    # Calculate total time
+    perf_metrics['total_time'] = sum(perf_metrics.values())
+    
+    # Print performance summary
+    if debug:
+        print("\n" + "=" * 60)
+        print("⏱️  PERFORMANCE BREAKDOWN")
+        print("=" * 60)
+        print(f"  Query Encoding:        {perf_metrics['encode_time']*1000:8.2f} ms ({perf_metrics['encode_time']/perf_metrics['total_time']*100:5.1f}%)")
+        print(f"  Vector Search:   {perf_metrics['search_time']*1000:8.2f} ms ({perf_metrics['search_time']/perf_metrics['total_time']*100:5.1f}%)")
+        print(f"  Doc Retrieval:   {perf_metrics['retrieval_time']*1000:8.2f} ms ({perf_metrics['retrieval_time']/perf_metrics['total_time']*100:5.1f}%)")
+        print(f"  Prompt Augmentation: {perf_metrics['prompt_time']*1000:8.2f} ms ({perf_metrics['prompt_time']/perf_metrics['total_time']*100:5.1f}%)")
+        print(f"  LLM Generation:  {perf_metrics['generation_time']*1000:8.2f} ms ({perf_metrics['generation_time']/perf_metrics['total_time']*100:5.1f}%)")
+        print("-" * 60)
+        print(f"  TOTAL:           {perf_metrics['total_time']*1000:8.2f} ms")
+        print("=" * 60)
     
     return answer
 
@@ -128,17 +151,33 @@ def main():
         """
         print(ascii_art)
         
-        # Initialize RAG pipeline components
+        if debug:
+            print("\n🔍 DEBUG MODE ENABLED - Performance metrics will be displayed")
+        
+        # Initialize RAG pipeline components with performance tracking
         print("\n[1/3] Loading Query Encoder...")
+        t_start = time.perf_counter()
         encoder = QueryEncoder()
+        encoder_load_time = time.perf_counter() - t_start
+        if debug:
+            print(f"  ⏱️  Loaded in {encoder_load_time:.3f}s")
         
         print("\n[2/3] Loading Vector Database...")
+        t_start = time.perf_counter()
         vector_db = VectorDB()
         vector_db.load_documents()
         vector_db.build_index()
+        db_load_time = time.perf_counter() - t_start
+        if debug:
+            print(f"  ⏱️  Loaded in {db_load_time:.3f}s")
         
         print("\n[3/3] Loading LLM...")
-        llm = LLMGenerator(n_ctx=2048, n_threads=4)
+        t_start = time.perf_counter()
+        llm = LLMGenerator()
+        llm_load_time = time.perf_counter() - t_start
+        if debug:
+            print(f"  ⏱️  Loaded in {llm_load_time:.3f}s")
+            print(f"\n  Total initialization time: {encoder_load_time + db_load_time + llm_load_time:.3f}s")
         
         print("\n" + "=" * 60)
         print("★ RAG Pipeline Ready! ★")
@@ -149,10 +188,11 @@ def main():
         print("Commands:")
         print("  'quit' or 'exit' - Exit the program")
         print("  'help' - Show this help message")
+        if not debug:
+            print("  Run with 'python main.py debug' for performance metrics")
         print("=" * 60)
         
         top_k = 5  # Number of documents to retrieve per query
-        similarity_threshold = 0.80 # Lower = stricter similarity check
         
         # Interactive query loop
         while True:
@@ -176,7 +216,7 @@ def main():
                     continue
                 
                 # Process the query through RAG pipeline
-                answer = process_query(user_input, encoder, vector_db, llm, top_k, similarity_threshold, debug)
+                answer = process_query(user_input, encoder, vector_db, llm, top_k, debug)
                 
                 # Display the generated answer
                 print("\n" + "=" * 60)

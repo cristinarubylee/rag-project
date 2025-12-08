@@ -4,38 +4,55 @@ from llama_cpp import Llama
 class LLMGenerator:
     """Wrapper for LLM generation using llama.cpp."""
     
-    def __init__(self, path=None, n_ctx=2048, n_threads=4, verbose=False):
+    def __init__(self, n_ctx=None, n_threads=4, verbose=False):
         """
         Initialize LLM generator.
         
         Args:
-            model_path: Path to GGUF model file
-            n_ctx: Context window size (default 2048)
+            n_ctx: Context window size (uses model's recommended size if None)
             n_threads: Number of CPU threads to use
             verbose: Whether to print detailed logs
         """
-        if path is None:
-            script_dir = Path(__file__).parent
-            project_root = script_dir.parent
-            path = project_root / "tinyllama-1.1b-chat-v0.3.Q4_K_M.gguf"
+        script_dir = Path(__file__).parent
+        project_root = script_dir.parent
+        
+        # TinyLlama 1.1B - 0.7-0.8GB memory, recommended n_ctx=2048
+        # path = project_root / "tinyllama-1.1b-chat-v0.3.Q4_K_M.gguf"
+        # recommended_ctx = 2048
+        
+        # Llama 3.2 3B (default) - balanced speed and quality, recommended n_ctx=8192
+        path = project_root / "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        recommended_ctx = 8192
+        
+        # Qwen2 1.5B Instruct - excellent for question answering, recommended n_ctx=4096
+        # path = project_root / "qwen2-1_5b-instruct-q4_0.gguf"
+        # recommended_ctx = 4096
+        
+        # Qwen2 7B Instruct - most capable (requires more memory), recommended n_ctx=4096
+        # path = project_root / "qwen2-7b-instruct-q4_0.gguf"
+        # recommended_ctx = 4096
 
         self.path = Path(path)
         
         if not self.path.exists():
             raise FileNotFoundError(f"Model file not found: {path}")
         
+        # Use recommended context size if not specified
+        context_size = n_ctx if n_ctx is not None else recommended_ctx
+        
         print(f"Loading LLM model from {self.path.name}...")
+        print(f"Using context window: {context_size} tokens")
         
         self.llm = Llama(
             model_path=str(self.path),
-            n_ctx=n_ctx,
+            n_ctx=context_size,
             n_threads=n_threads,
             verbose=verbose
         )
         
         print("LLM model loaded successfully!")
     
-    def generate(self, prompt, max_tokens=512, temperature=0.7, stop=None):
+    def generate(self, prompt, max_tokens, temperature, stop=None):
         """
         Generate a response from the LLM.
         
@@ -50,6 +67,10 @@ class LLMGenerator:
         """
         if not prompt or not prompt.strip():
             raise ValueError("Prompt cannot be empty")
+        
+        # Default stop sequences to prevent rambling
+        if stop is None:
+            stop = ["\n\n\n", "Question:", "Context:"]
         
         # Generate response
         output = self.llm(
@@ -77,18 +98,26 @@ class LLMGenerator:
             Formatted prompt string
         """
         # Build context section with clear separation
-        context_text = ""
-        for i, doc in enumerate(context_docs, 1):
-            context_text += f"[{i}] {doc['text']}\n\n"
+        if not context_docs:
+            context_text = "[No relevant information available]\n\n"
+        else:
+            context_text = ""
+            for i, doc in enumerate(context_docs, 1):
+                context_text += f"[{i}] {doc['text']}\n\n"
         
-        # Ultra-simple prompt for basic models
-        # Key: Use "based on" to anchor the response and limit hallucination
-        prompt = f"""Question: {query}
+        prompt = f"""You are a helpful assistant. Use the information below to answer the question directly and naturally.
 
-Reference information:
+Information:
 {context_text}
 
-Based only on the reference information above, provide a brief answer to the question. If the information is not relevant, say so.
+Question: {query}
+
+Instructions:
+- Answer the question directly as if you naturally know this information
+- Never mention "the context", "the information", "according to", or "based on"
+- Write as if you're explaining something you already know
+- If you cannot answer with the information provided, say "I don't have enough information to answer that question" and reference "my provided texts"
+- Be concise and conversational
 
 Answer:"""
         
